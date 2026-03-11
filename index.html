@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ごはん記録</title>
+
+<link rel="manifest" href="manifest.json">
+
+<link rel="apple-touch-icon" href="icon.png">
+<meta name="theme-color" content="#66cc99">
+
+<style>
+
+body{
+font-family:sans-serif;
+margin:0;
+background:#f4f4f4;
+font-size:14px;
+}
+
+header{
+background:#66cc99;
+color:white;
+padding:10px;
+font-size:18px;
+}
+
+.container{
+padding:12px;
+}
+
+input,textarea,select{
+width:100%;
+padding:8px;
+margin:5px 0;
+border-radius:6px;
+border:1px solid #ccc;
+box-sizing:border-box;
+}
+
+button{
+background:#66cc99;
+color:white;
+border:none;
+padding:8px;
+border-radius:8px;
+width:100%;
+margin-top:5px;
+}
+
+#list{
+display:grid;
+grid-template-columns:repeat(2,1fr);
+gap:10px;
+}
+
+@media(min-width:600px){
+#list{
+grid-template-columns:repeat(3,1fr);
+}
+}
+
+.card{
+background:white;
+border-radius:12px;
+overflow:hidden;
+box-shadow:0 2px 6px rgba(0,0,0,0.1);
+cursor:pointer;
+}
+
+.cardImage{
+width:100%;
+aspect-ratio:1/1;
+overflow:hidden;
+}
+
+.cardImage img,
+.cardImage video{
+width:100%;
+height:100%;
+object-fit:cover;
+}
+
+.cardContent{
+padding:8px;
+}
+
+.cardContent h3{
+font-size:14px;
+margin:0;
+}
+
+.star{
+font-size:22px;
+cursor:pointer;
+color:#ccc;
+}
+
+.star.active{
+color:gold;
+}
+
+.carousel{
+display:flex;
+overflow-x:auto;
+scroll-snap-type:x mandatory;
+gap:10px;
+margin-top:10px;
+}
+
+.carousel img,
+.carousel video{
+width:100%;
+max-width:100%;
+flex:0 0 100%;
+scroll-snap-align:start;
+border-radius:10px;
+}
+
+.detail{
+position:fixed;
+top:0;
+left:0;
+width:100%;
+height:100%;
+background:white;
+overflow:auto;
+padding:15px;
+display:none;
+z-index:100;
+}
+
+.fullscreen{
+position:fixed;
+top:0;
+left:0;
+width:100%;
+height:100%;
+background:black;
+display:flex;
+align-items:center;
+justify-content:center;
+z-index:999;
+}
+
+.fullscreen img{
+max-width:100%;
+max-height:100%;
+}
+
+#folderMenu{
+margin-top:5px;
+padding:5px;
+background:#fff3e6;
+border-radius:8px;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<header>🍽 ごはん記録</header>
+
+<div class="container">
+
+<input id="search" placeholder="店名・住所検索">
+
+<select id="folderFilter"></select>
+
+<button onclick="editFolder()">フォルダー編集</button>
+
+<div id="folderMenu" style="display:none;">
+<button onclick="addFolder()">フォルダー追加</button>
+<button onclick="deleteFolder()">フォルダー削除</button>
+</div>
+
+<select id="sort">
+<option value="new">新しい順</option>
+<option value="old">古い順</option>
+<option value="rating">評価順</option>
+<option value="name">店名順</option>
+</select>
+
+<h3>記録追加</h3>
+
+<select id="folder"></select>
+
+<input id="shop" placeholder="店名">
+<input id="address" placeholder="住所">
+<input id="date" type="date">
+
+<div id="stars"></div>
+
+<textarea id="memo" placeholder="コメント"></textarea>
+
+<input id="media" type="file" multiple accept="image/*,video/*">
+
+<button onclick="save()">記録する</button>
+
+<h3>記録一覧</h3>
+
+<div id="list"></div>
+
+</div>
+
+<div id="detail" class="detail"></div>
+
+<script>
+
+if('serviceWorker' in navigator){
+navigator.serviceWorker.register('sw.js')
+}
+
+let db;
+
+let request = indexedDB.open("foodRecordDB",1);
+
+request.onupgradeneeded = function(e){
+let db = e.target.result;
+db.createObjectStore("records",{keyPath:"id",autoIncrement:true});
+}
+
+request.onsuccess = function(e){
+db = e.target.result;
+render();
+}
+
+let rating=0
+
+function addFolder(){
+
+let name=prompt("フォルダー名を入力")
+
+if(!name) return
+
+let folders=getFolders()
+
+folders.push(name)
+
+setFolders(folders)
+
+updateFolderUI()
+
+}
+
+function deleteFolder(){
+
+let name=document.getElementById("folderFilter").value
+
+if(!name){
+alert("削除するフォルダーを選択してください")
+return
+}
+
+if(!confirm(name+" を削除しますか？")) return
+
+let folders=getFolders()
+
+folders=folders.filter(f=>f!==name)
+
+setFolders(folders)
+
+updateFolderUI()
+
+}
+
+function editFolder(){
+
+let menu=document.getElementById("folderMenu")
+
+if(menu.style.display==="none"){
+menu.style.display="block"
+}else{
+menu.style.display="none"
+}
+
+}
+function getFolders(){
+return JSON.parse(localStorage.getItem("folders")||'["ラーメン"]')
+}
+
+function setFolders(folders){
+localStorage.setItem("folders",JSON.stringify(folders))
+}
+
+function updateFolderUI(){
+
+let folders=getFolders()
+
+let folder=document.getElementById("folder")
+let filter=document.getElementById("folderFilter")
+
+folder.innerHTML=""
+filter.innerHTML="<option value=''>すべて</option>"
+
+folders.forEach(f=>{
+folder.innerHTML+=`<option>${f}</option>`
+filter.innerHTML+=`<option>${f}</option>`
+})
+
+}
+
+function createStars(){
+let stars=document.getElementById("stars")
+for(let i=1;i<=5;i++){
+let s=document.createElement("span")
+s.textContent="★"
+s.className="star"
+s.onclick=function(){
+rating=i
+updateStars()
+}
+stars.appendChild(s)
+}
+}
+
+function updateStars(){
+let stars=document.querySelectorAll(".star")
+stars.forEach((s,i)=>{
+if(i<rating){s.classList.add("active")}
+else{s.classList.remove("active")}
+})
+}
+
+createStars()
+
+function getData(callback){
+
+let tx = db.transaction("records","readonly")
+let store = tx.objectStore("records")
+
+let request = store.getAll()
+
+request.onsuccess = function(){
+callback(request.result)
+}
+
+}
+
+function addRecord(shop, address, date, memo, folder, ratingValue, media){
+
+let tx = db.transaction("records","readwrite")
+let store = tx.objectStore("records")
+
+store.add({
+shop:shop,
+address:address,
+date:date,
+memo:memo,
+folder:folder,
+rating:ratingValue,
+media:media
+})
+
+tx.oncomplete=function(){
+render()
+}
+
+}
+
+function save(){
+
+let shop=document.getElementById("shop").value
+let address=document.getElementById("address").value
+let date=document.getElementById("date").value
+let memo=document.getElementById("memo").value
+let folder=document.getElementById("folder").value
+let files=document.getElementById("media").files
+
+ if (!shop || !date) {
+    alert("店名と日付は必須です");
+    return;
+}
+
+let currentRating = rating;
+
+let media=[]
+
+if (files.length === 0) {
+    addRecord(shop, address, date, memo, folder, currentRating, media);
+    return;
+}
+
+ let promises = Array.from(files).map(file => {
+        return new Promise(resolve => {
+            let reader = new FileReader();
+            reader.onload = e => resolve({ type: file.type, data: e.target.result });
+            reader.readAsDataURL(file);
+        });
+    });
+
+ Promise.all(promises).then(results => {
+        media = results;
+        addRecord(shop, address, date, memo, folder, currentRating, media);
+        clearForm();
+    });
+}
+
+function clearForm() {
+    document.getElementById("shop").value = "";
+    document.getElementById("address").value = "";
+    document.getElementById("date").value = "";
+    document.getElementById("memo").value = "";
+    let mediaInput = document.getElementById("media");
+    mediaInput.value = "";
+    mediaInput.type = "";
+    mediaInput.type = "file";
+    rating = 0;
+    updateStars();
+}
+
+function render(){
+getData(function(data){
+    let list=document.getElementById("list")
+    let search=document.getElementById("search").value.toLowerCase()
+    let folderFilter=document.getElementById("folderFilter").value
+    let sort=document.getElementById("sort").value
+
+    list.innerHTML=""
+
+    let filteredData = data.filter(r=>{
+    let matchSearch =!search ||(r.shop && r.shop.toLowerCase().includes(search)) ||(r.address && r.address.toLowerCase().includes(search))
+    let matchFolder = !folderFilter || r.folder===folderFilter
+     return matchSearch && matchFolder
+    })
+
+    if(sort==="new") filteredData.sort((a,b)=>new Date(b.date)-new Date(a.date))
+    if(sort==="old") filteredData.sort((a,b)=>new Date(a.date)-new Date(b.date))
+    if(sort==="rating") filteredData.sort((a,b)=>(b.rating||0)-(a.rating||0))
+    if(sort==="name") filteredData.sort((a,b)=>a.shop.localeCompare(b.shop,'ja'))
+
+    filteredData.forEach((r)=>{
+let mediaHTML=""
+
+if(r.media && r.media.length>0){
+
+    let m=r.media[0]
+
+    if(m && m.type && m.type.startsWith("image")){
+        mediaHTML=`<img src="${m.data}">`
+    }
+    else if(m && m.type && m.type.startsWith("video")){
+        mediaHTML=`<video src="${m.data}" muted></video>`
+    }
+
+}
+
+        let card=document.createElement("div")
+        card.className="card"
+        let originalIndex = data.indexOf(r)
+
+        card.innerHTML=`
+        <div class="cardImage">${mediaHTML}</div>
+        <div class="cardContent">
+            <h3>${r.shop}</h3>
+            <p>⭐ ${r.rating}</p>
+        </div>
+        `
+
+        card.onclick=function(){
+            showDetail(originalIndex)
+        }
+
+        list.appendChild(card)
+    })
+})
+}
+
+function showDetail(index){
+
+getData(function(data){
+
+let r=data[index]
+
+let box=document.getElementById("detail")
+
+let mediaHTML=""
+
+if(r.media && r.media.length){
+
+r.media.forEach(m=>{
+
+if(m.type && m.type.startsWith("image")){
+mediaHTML+=`<img src="${m.data}" onclick="fullscreen('${m.data}')">`
+}
+
+else if(m.type && m.type.startsWith("video")){
+mediaHTML+=`<video controls src="${m.data}"></video>`
+}
+
+})
+
+}
+
+box.innerHTML=`
+
+<div style="text-align:right">
+<button onclick="edit(${index})">編集</button>
+<button onclick="closeDetail()">閉じる</button>
+</div>
+
+<h2>${r.shop}</h2>
+
+<div class="carousel">
+${mediaHTML}
+</div>
+
+<p>
+住所:
+<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(r.address)}" target="_blank">
+${r.address}
+</a>
+</p>
+
+<p>⭐ ${r.rating}</p>
+
+<p>${r.memo}</p>
+
+`
+
+box.style.display="block"
+
+})
+
+}
+
+function removeRecord(index){
+
+if(!confirm("削除しますか？")) return
+
+getData(function(data){
+
+let id=data[index].id
+
+let tx=db.transaction("records","readwrite")
+let store=tx.objectStore("records")
+
+store.delete(id)
+
+tx.oncomplete=function(){
+render()
+closeDetail()
+}
+
+})
+
+}
+
+function closeDetail(){
+document.getElementById("detail").style.display="none"
+}
+
+function edit(index){
+
+getData(function(data){
+
+let r=data[index]
+
+let box=document.getElementById("detail")
+
+let mediaHTML=""
+
+if(r.media && r.media.length){
+r.media.forEach(m=>{
+if(m.type.startsWith("image")){
+mediaHTML+=`<img src="${m.data}" style="width:80px;margin:3px;">`
+}
+else{
+mediaHTML+=`<video src="${m.data}" style="width:80px;margin:3px;"></video>`
+}
+})
+}
+
+box.innerHTML=`
+
+<h2>編集</h2>
+
+<input id="editShop" value="${r.shop}">
+<input id="editAddress" value="${r.address}">
+<textarea id="editMemo">${r.memo}</textarea>
+
+<div>${mediaHTML}</div>
+
+<button onclick="saveEdit(${r.id})">保存</button>
+<button onclick="removeRecord(${index})">削除</button>
+<button onclick="showDetail(${index})">戻る</button>
+
+`
+
+})
+
+}
+
+function saveEdit(id){
+
+let tx=db.transaction("records","readwrite")
+let store=tx.objectStore("records")
+
+let request=store.get(id)
+
+request.onsuccess=function(){
+
+let data=request.result
+
+data.shop=document.getElementById("editShop").value
+data.address=document.getElementById("editAddress").value
+data.memo=document.getElementById("editMemo").value
+
+let update = store.put(data)
+
+update.onsuccess=function(){
+render()
+closeDetail()
+}
+
+}
+
+}
+
+function fullscreen(src){
+
+let div=document.createElement("div")
+div.className="fullscreen"
+
+div.innerHTML=`<img src="${src}">`
+
+div.onclick=function(){
+div.remove()
+}
+
+document.body.appendChild(div)
+
+}
+
+document.getElementById("search").oninput = render
+document.getElementById("sort").onchange = render
+
+updateFolderUI()
+render()
+
+</script>
+
+</body>
+</html>
