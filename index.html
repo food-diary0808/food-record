@@ -362,6 +362,102 @@ render()
 
 }
 
+function compressImage(file){
+
+return new Promise(resolve=>{
+
+let img=new Image()
+let reader=new FileReader()
+
+reader.onload=function(e){
+img.src=e.target.result
+}
+
+img.onload=function(){
+
+let canvas=document.createElement("canvas")
+let ctx=canvas.getContext("2d")
+
+let maxSize=1200
+
+let width=img.width
+let height=img.height
+
+if(width>height){
+if(width>maxSize){
+height*=maxSize/width
+width=maxSize
+}
+}else{
+if(height>maxSize){
+width*=maxSize/height
+height=maxSize
+}
+}
+
+canvas.width=width
+canvas.height=height
+
+ctx.drawImage(img,0,0,width,height)
+
+let compressed=canvas.toDataURL("image/jpeg",0.8)
+
+resolve({
+type:"image/jpeg",
+data:compressed
+})
+
+}
+
+reader.readAsDataURL(file)
+
+})
+
+}
+
+function createVideoThumbnail(file){
+
+return new Promise(resolve=>{
+
+let video=document.createElement("video")
+video.src=URL.createObjectURL(file)
+video.muted=true
+
+video.onloadeddata=function(){
+video.currentTime=1
+}
+
+video.onseeked=function(){
+
+let canvas=document.createElement("canvas")
+canvas.width=video.videoWidth
+canvas.height=video.videoHeight
+
+let ctx=canvas.getContext("2d")
+ctx.drawImage(video,0,0)
+
+let thumbnail=canvas.toDataURL("image/jpeg",0.7)
+
+let reader=new FileReader()
+
+reader.onload=function(e){
+
+resolve({
+type:file.type,
+data:e.target.result,
+thumbnail:thumbnail
+})
+
+}
+
+reader.readAsDataURL(file)
+
+}
+
+})
+
+}
+
 function save(){
 
 let shop=document.getElementById("shop").value
@@ -385,13 +481,23 @@ if (files.length === 0) {
     return;
 }
 
- let promises = Array.from(files).map(file => {
-        return new Promise(resolve => {
-            let reader = new FileReader();
-            reader.onload = e => resolve({ type: file.type, data: e.target.result });
-            reader.readAsDataURL(file);
-        });
-    });
+let promises = Array.from(files).map(file => {
+
+if(file.type.startsWith("image")){
+
+return compressImage(file)
+
+}else{
+
+return new Promise(resolve=>{
+let reader=new FileReader()
+reader.onload=e=>resolve({type:file.type,data:e.target.result})
+reader.readAsDataURL(file)
+})
+
+}
+
+});
 
  Promise.all(promises).then(results => {
         media = results;
