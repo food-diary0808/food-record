@@ -200,9 +200,8 @@ border-radius:8px;
 <input id="shop" placeholder="店名">
 <input id="address" placeholder="住所">
 <div style="display:flex;gap:5px;">
-<input id="year" type="number" placeholder="年" min="2000" max="2150">
-<input id="month" type="number" placeholder="月" min="1" max="12">
-<input id="day" type="number" placeholder="日" min="1" max="31">
+<input id="date" type="date">
+
 </div>
 
 <div id="stars"></div>
@@ -474,12 +473,7 @@ function save(){
 
 let shop=document.getElementById("shop").value
 let address=document.getElementById("address").value
-let year=document.getElementById("year").value
-let month=document.getElementById("month").value
-let day=document.getElementById("day").value
-
-let date = year + "-" + month.padStart(2,"0") + "-" + day.padStart(2,"0")
-
+let date=document.getElementById("date").value
 let memo=document.getElementById("memo").value
 let folder=document.getElementById("folder").value
 let files=document.getElementById("media").files
@@ -526,9 +520,7 @@ reader.readAsDataURL(file)
 function clearForm() {
     document.getElementById("shop").value = "";
     document.getElementById("address").value = "";
-    document.getElementById("year").value = "";
-    document.getElementById("month").value = "";
-    document.getElementById("day").value = "";
+    document.getElementById("date").value = "";
     document.getElementById("memo").value = "";
     let mediaInput = document.getElementById("media");
     mediaInput.value = "";
@@ -630,6 +622,8 @@ box.innerHTML=`
 
 <h2>${r.shop}</h2>
 
+<p>${r.date}</p>
+
 <div class="carousel">
 ${mediaHTML}
 </div>
@@ -642,6 +636,8 @@ ${r.address}
 </p>
 
 <p>⭐ ${r.rating}</p>
+
+<p>${r.date}</p>
 
 <p>${r.memo}</p>
 
